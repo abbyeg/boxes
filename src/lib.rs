@@ -1,41 +1,106 @@
-use std::collections::HashSet;
+use std::{collections::{BTreeMap, BTreeSet, HashSet}, num::NonZero, ops::Bound};
 
-#[derive(Debug, Hash, Eq, PartialEq)]
-struct Point {
-    x: usize,
-    y: usize
+enum List {
+    Empty,
+    Ele(i32, Box<List>)
 }
-struct BoundingBox {
-    coordinates: HashSet<Point>,
-    min_left_point: Option<Point>,
-    min_right_point: Option<Point>,
-    max_left_point: Option<Point>,
-    max_right_point: Option<Point>,
+
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
+struct Point {
+    row: usize,
+    col: usize
+}
+
+impl Point {
+    pub fn new(row: usize, col: usize) -> Self {
+        Self {
+            row,
+            col
+        }
+    }
+}
+
+impl ToString for Point {
+    fn to_string(&self) -> String {
+        format!("({},{})", self.row + 1, self.col + 1)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct Event {
+    col: usize,
+    is_start: bool,
+    box_id: usize,
+    top: usize,
+    bottom: usize,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct BoundingBox {
+    min_left_point: Point,
+    max_right_point: Point,
+    left: usize,
+    top: usize,
+    right: usize,
+    bottom: usize,
+    size: usize,
 }
 
 impl BoundingBox {
-    fn new() -> Self {
-        Self {
-            coordinates: HashSet::new(),
-            min_left_point: None,
-            min_right_point: None,
-            max_left_point: None,
-            max_right_point: None,
+    fn new_with_points(points: Vec<Point>) -> Self {
+        println!("Found points {points:?}");
+        let mut min_row = points[0].row;
+        let mut min_col = points[0].col;
+        let mut max_row = points[0].row;
+        let mut max_col = points[0].col;
+        
+        for point in points {
+            if point.row < min_row {
+                min_row = point.row;
+            }
+            if point.row > max_row {
+                max_row = point.row;
+            }
+            if point.col < min_col {
+                min_col = point.col;
+            }
+            if point.col > max_col {
+                max_col = point.col;
+            }
+        }
+        let min_left_point = Point { row: min_row, col: min_col };
+        let max_right_point = Point { row: max_row, col: max_col };
+
+        let width = max_right_point.col - min_left_point.col + 1;
+        let height = max_right_point.row - min_left_point.row + 1;
+        let size = width * height;
+
+        // println!("Creating Bounding Box with left point: {:?}, right point: {:?}", min_left_point.to_string(), max_right_point.to_string());
+        
+        return Self {
+            min_left_point,
+            max_right_point,
+            left: min_col,
+            top: max_row,
+            right: max_col,
+            bottom: min_row,
+            size
         }
     }
 
-    fn print_all_bounds(&self) {
-        let min_left = self.min_left_point.as_ref().unwrap();
-        let min_right = self.min_right_point.as_ref().unwrap();
-        let max_left = self.max_left_point.as_ref().unwrap();
-        let max_right = self.max_right_point.as_ref().unwrap();
-        println!("\n({:?},{:?})({:?},{:?})", min_left.x, min_left.y, min_right.x, min_right.y);
-        println!("({:?},{:?})({:?},{:?})", max_left.x, max_left.y, max_right.x, max_right.y)
+    pub fn print(&self) {
+        println!("{}", self.to_string());
     }
 }
 
-fn search_island(
-    bounding_box: &mut BoundingBox, 
+impl ToString for BoundingBox {
+    fn to_string(&self) -> String {
+        format!("{}{}", self.min_left_point.to_string(), self.max_right_point.to_string())
+    }
+}
+
+fn search_adjacent_points(
+    points: &mut Vec<Point>, 
     row: usize, 
     col: usize, 
     matrix: &mut Vec<Vec<char>>
@@ -44,79 +109,117 @@ fn search_island(
     if matrix[row][col] == '-' || matrix[row][col] == 'x' {
         return;
     }
-    // add position to current coordinates
-    bounding_box.coordinates.insert(Point { x: row, y: col });
-    
-    match &mut bounding_box.min_left_point {
-        Some(min_left_point) => {
-            if col < min_left_point.y {
-                min_left_point.y = col;
-            }
-            if row < min_left_point.x {
-                min_left_point.x = row;
-            }
-        },
-        None => bounding_box.min_left_point = Some(Point { x: row, y: col}),
-    }
 
-    match &mut bounding_box.max_right_point {
-        Some(max_right_point) => {
-            if col > max_right_point.y {
-                max_right_point.y = col;
-            }
-            if row > max_right_point.x {
-                max_right_point.x = row;
-            }
-        },
-        None => bounding_box.max_right_point = Some(Point { x: row, y: col}),
-    }
-    
+    // add position to current coordinates
+    points.push(Point { row, col });
     matrix[row][col] = 'x';
     
     if row < (matrix.len() - 1) {
-        search_island(bounding_box, row+1, col, matrix);
+        search_adjacent_points(points, row+1, col, matrix);
     }
     if row > 0 {
-        search_island(bounding_box, row-1, col, matrix);
+        search_adjacent_points(points, row-1, col, matrix);
     }
     if col < (matrix[0].len() - 1) {
-        search_island(bounding_box, row, col+1, matrix);
+        search_adjacent_points(points, row, col+1, matrix);
     }
     if col > 0 {
-        search_island(bounding_box, row, col-1, matrix);
+        search_adjacent_points(points, row, col-1, matrix);
     }
 }
 
-pub fn min_bounding_boxes(data: &str) -> String {
-    // Convert to 2d array
-    let mut matrix: Vec<Vec<char>> = data
+fn convert_lines_to_2d_array(lines: &str) -> Vec<Vec<char>> {
+    lines
         .lines()
         .map(|line| line.chars().collect())
-        .collect();
+        .collect()
+}
+
+pub fn find_largest_min_bounding_boxes(lines: &str) -> Vec<BoundingBox> {
+    let mut result = Vec::new();
+    // Convert to 2d array
+    let mut matrix = convert_lines_to_2d_array(lines);
+    
     let mut boxes = vec![];
     for row in 0..matrix.len()  {
         for col in 0..matrix[0].len() {
             if matrix[row][col] == '*' {
-                let mut bounding_box = BoundingBox::new();
-                search_island(&mut bounding_box, row, col, &mut matrix);
-                if bounding_box.min_left_point.is_some() && bounding_box.max_right_point.is_some() {
-                    let top_left = bounding_box.min_left_point.as_ref().unwrap();
-                    let bottom_right = bounding_box.max_right_point.as_ref().unwrap();
-                    bounding_box.min_right_point = Some(Point { x: top_left.x, y: bottom_right.y });
-                    bounding_box.max_left_point = Some(Point { x: bottom_right.x, y: top_left.y });
-                }
-                // bounding_box.min_right_point = Some(Point { x: , y: })
-                boxes.push(bounding_box);
+                let mut points = vec![];
+                search_adjacent_points(&mut points, row, col, &mut matrix);
+                boxes.push(BoundingBox::new_with_points(points));
             }
         }
     }
 
-    for b in boxes.iter() {
-        b.print_all_bounds();
+    let non_overlapping_ids = get_non_overlap_boxes(&boxes);
+    if non_overlapping_ids.is_empty() {
+        return vec![];
     }
 
+    let mut largest_size = boxes[non_overlapping_ids[0]].size;
+    for &id in non_overlapping_ids.iter() {
+        let cur_size = boxes[id].size;
+        if cur_size >= largest_size {
+            largest_size = cur_size;
+        }
+    }
+    for &id in non_overlapping_ids.iter() {
+        if boxes[id].size == largest_size {
+            result.push(boxes[id]);
+        }
+    }
+    result
+}
 
-    String::new()
+// sweep across the boxes left-right (via cols) checking intervals of top/bottom for each box
+pub fn get_non_overlap_boxes(boxes: &Vec<BoundingBox>) -> Vec<usize> {
+    println!("Boxes: {boxes:?}");
+    let mut result = vec![];
+    let mut active: BTreeSet<(usize, usize, usize)> = BTreeSet::new();
+
+    // create events
+    let mut events = vec![];
+    
+    let mut overlapping: HashSet<usize> = HashSet::new();
+    for (i, b) in boxes.iter().enumerate() {
+        events.push(Event { box_id: i, is_start: true,  col: b.left, top: b.top,  bottom: b.bottom });
+        events.push(Event { box_id: i, is_start: false, col: b.right, top: b.top, bottom: b.bottom });
+    }
+
+    events.sort();
+    // println!("Events: {events:?}");
+
+    for event in events.iter() {
+        match event.is_start {
+            true => {
+                let is_overlapping = active.iter().any(|&(bottom, top, _)| {
+                    !(event.bottom > top || event.top < bottom)
+                });
+                active.insert((event.bottom, event.top, event.box_id));
+                if is_overlapping {
+                    overlapping.insert(event.box_id);
+                    for (bottom, top, box_id) in active.iter() {
+                        if !(event.bottom > *top || event.top < *bottom) {
+                            overlapping.insert(*box_id);
+                        }
+                    }
+                }
+            },
+            false => {
+                active.remove(&(event.bottom, event.top, event.box_id));
+            }
+        }
+    }
+
+    println!("Overlapping points: {overlapping:?}");
+
+    for (idx, _) in boxes.iter().enumerate() {
+        if !overlapping.contains(&idx) {
+            result.push(idx);
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -124,13 +227,208 @@ mod tests {
     use super::*;
 
     #[test]
-    fn simple_input() {
-        let input ="\
+    fn test_convert_lines_to_2d_array1() {
+        let input1 ="\
 ----
 -**-
 -**-
 ----
 ";
-        assert_eq!(min_bounding_boxes(&input), "(2,2)(3,3)");
+        let expected1 = vec![
+            vec!['-','-','-','-'],
+            vec!['-','*','*','-'],
+            vec!['-','*','*','-'],
+            vec!['-','-','-','-'],
+        ];
+        assert_eq!(convert_lines_to_2d_array(input1), expected1);
+    }
+
+    #[test]
+    fn test_convert_lines_to_2d_array2() {
+        let input1 ="\
+-
+";
+        let expected1 = vec![
+            vec!['-']
+        ];
+        assert_eq!(convert_lines_to_2d_array(input1), expected1);
+    }
+
+    #[test]
+    fn test_search_for_adjacent_points() {
+        let mut points = vec![];
+        let row = 1;
+        let col = 1;
+        let mut matrix = vec![
+            vec!['*','-','-','*'],
+            vec!['-','*','*','-'],
+            vec!['-','*','*','-'],
+            vec!['*','-','-','-']
+        ];
+        search_adjacent_points(&mut points, row, col, &mut matrix);
+        points.sort();
+        let expected = vec![
+            Point::new(1,1),
+            Point::new(1,2),
+            Point::new(2,1),
+            Point::new(2,2),
+        ];
+        assert_eq!(points, expected);
+    }
+
+    #[test]
+    fn test_build_bounding_box_from_points() {
+        let points1 = vec![
+            Point::new(1,1),
+            Point::new(1,2),
+            Point::new(2,1),
+            Point::new(1,1),
+        ];
+        let bounding_box = BoundingBox::new_with_points(points1);
+        
+        assert_eq!(bounding_box.min_left_point, Point::new(1,1));
+        assert_eq!(bounding_box.max_right_point, Point::new(2,2));
+        assert_eq!(bounding_box.left, 1);
+        assert_eq!(bounding_box.top, 2);
+        assert_eq!(bounding_box.right, 2);
+        assert_eq!(bounding_box.bottom, 1);
+        assert_eq!(bounding_box.size, 4);
+    }
+
+    #[test]
+    fn test_get_non_overlap_boxes() {
+        /* for example: 
+         *  **-------***
+         *  -*--**--***-
+         *  -----***--**
+         *  -------***--
+         * 
+         */
+        let points1 = vec![
+            Point::new(0,0),
+            Point::new(0,1),
+            Point::new(1,1),
+        ];
+        let bounding_box1 = BoundingBox::new_with_points(points1);
+        
+        let points2 = vec![
+            Point::new(1,4),
+            Point::new(1,5),
+            Point::new(2,5),
+            Point::new(2,6),
+            Point::new(2,7),
+            Point::new(3,7),
+            Point::new(3,8),
+            Point::new(3,9),
+        ];
+        let bounding_box2 = BoundingBox::new_with_points(points2);
+        
+        let points3 = vec![
+            Point::new(0,9),
+            Point::new(0,10),
+            Point::new(0,11),
+            Point::new(1,8),
+            Point::new(1,9),
+            Point::new(1,10),
+            Point::new(2,10),
+            Point::new(2,11),
+        ];
+        let bounding_box3 = BoundingBox::new_with_points(points3);
+
+        let bounding_boxes = vec![bounding_box1, bounding_box2, bounding_box3];
+        let non_overlapping_ids = get_non_overlap_boxes(&bounding_boxes);
+        let expected = vec![0];
+        assert_eq!(non_overlapping_ids, expected);
+    }
+
+    #[test]
+    fn test_example_1() {
+        let lines = "\
+--*--
+***--
+----*
+";
+        let results = find_largest_min_bounding_boxes(lines);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].to_string(), String::from("(1,1)(2,3)"));
+    }
+
+    #[test]
+    fn test_example_2() {
+        let lines = "\
+----
+----
+----
+";
+        let results = find_largest_min_bounding_boxes(lines);
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_example_3() {
+        let lines = "\
+**--*
+**--*
+----*
+----*
+";
+        let results = find_largest_min_bounding_boxes(lines);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].to_string(), String::from("(1,1)(2,2)"));
+        assert_eq!(results[1].to_string(), String::from("(1,5)(4,5)"));
+    }
+
+    #[test]
+    fn test_example_4() {
+        let lines = "\
+--*----
+-**----
+**-----
+----***
+----***
+----***
+";
+        let results = find_largest_min_bounding_boxes(lines);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].to_string(), String::from("(1,1)(3,3)"));
+        assert_eq!(results[1].to_string(), String::from("(4,5)(6,7)"));
+    }
+
+    #[test]
+    fn test_example_5() {
+        let lines = "\
+-*---
+**-*-
+--**-
+";
+        let results = find_largest_min_bounding_boxes(lines);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].to_string(), String::from("(1,1)(2,2)"));
+        assert_eq!(results[1].to_string(), String::from("(2,3)(3,4)"));
+    }
+
+    #[test]
+    fn test_example_6() {
+        let lines = "\
+*-*-
+-*-*
+";
+        let results = find_largest_min_bounding_boxes(lines);
+        assert_eq!(results.len(), 4);
+        assert_eq!(results[0].to_string(), String::from("(1,1)(1,1)"));
+        assert_eq!(results[1].to_string(), String::from("(1,3)(1,3)"));
+        assert_eq!(results[3].to_string(), String::from("(2,2)(2,2)"));
+        assert_eq!(results[4].to_string(), String::from("(2,4)(2,4)"));
+    }
+
+    #[test]
+    fn test_example_7() {
+        let lines = "\
+-*-
+---
+";
+        let results = find_largest_min_bounding_boxes(lines);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].to_string(), String::from("(1,2)(1,2)"));
     }
 }
