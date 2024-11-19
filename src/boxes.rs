@@ -78,8 +78,6 @@ impl BoundingBox {
         let width = max_right_point.col - min_left_point.col + 1;
         let height = max_right_point.row - min_left_point.row + 1;
         let size = width * height;
-
-        // println!("Creating Bounding Box with left point: {:?}, right point: {:?}", min_left_point.to_string(), max_right_point.to_string());
         
         Self {
             min_left_point,
